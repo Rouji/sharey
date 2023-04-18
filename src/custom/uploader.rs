@@ -1,10 +1,10 @@
-use crate::custom::config::{CustomUploaderConfig, Body, RequestMethod};
+use crate::custom::config::{Config, Body, RequestMethod};
 use reqwest;
 use std::collections::HashMap;
 use std::io::{Seek, SeekFrom};
 
 pub struct CustomUploader {
-    config: CustomUploaderConfig,
+    config: Config,
 }
 
 #[allow(dead_code)]
@@ -41,7 +41,7 @@ impl<'a> Input<'a> {
 }
 
 impl CustomUploader {
-    pub fn new(config: CustomUploaderConfig) -> Self {
+    pub fn new(config: Config) -> Self {
         Self { config }
     }
 

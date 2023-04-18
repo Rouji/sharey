@@ -1,6 +1,7 @@
 use serde::{Deserialize, Deserializer};
 use serde_json;
 use std::collections::HashMap;
+use thiserror;
 
 fn default_request_method() -> RequestMethod {
     RequestMethod::POST
@@ -63,7 +64,7 @@ where
 #[allow(dead_code)]
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "PascalCase")]
-pub struct CustomUploaderConfig {
+pub struct Config {
     pub version: Option<String>,
     pub name: Option<String>,
     pub regex_list: Option<Vec<String>>,
@@ -89,4 +90,24 @@ pub struct CustomUploaderConfig {
     pub request_method: RequestMethod,
     #[serde(rename = "RequestURL")]
     pub request_url: String,
+}
+
+impl Config {
+    pub fn from_string(string: &str) -> Result<Config, Error> {
+        Ok(serde_json::from_str::<Self>(string)?)
+    }
+
+    pub fn from_file(path: &str) -> Result<Config, Error> {
+        let f = std::fs::File::open(path)?;
+        let s = std::io::read_to_string(f)?;
+        Self::from_string(&s)
+    }
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("I/O Error")]
+    IOError(#[from] std::io::Error),
+    #[error("Serialisation Error")]
+    SerialisationError(#[from] serde_json::Error),
 }
