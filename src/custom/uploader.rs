@@ -1,7 +1,8 @@
-use crate::custom::config::{Config, Body, RequestMethod};
+use crate::custom::config::{Body, Config, RequestMethod};
+use mime_guess;
 use reqwest;
 use std::collections::HashMap;
-use std::io::{Seek, SeekFrom};
+use std::io::{Seek, SeekFrom}; //TODO: optionally use libmagic ("magic" crate)?
 
 pub struct CustomUploader {
     config: Config,
@@ -30,12 +31,13 @@ impl<'a> Input<'a> {
             }
             Err(_) => None,
         };
+        let mime_type = mime_guess::from_path(file_path).first_raw();
         let reader = std::io::BufReader::new(f);
         Ok(Self {
             reader: Some(Box::new(reader)),
             content_size,
+            mime_type,
             file_name,
-            mime_type: Some("application/octet-stream"),
         })
     }
 }
@@ -103,7 +105,12 @@ impl CustomUploader {
                 }
                 req.multipart(form)
             }
-            Some(Body::FormURLEncoded) => req.form(&self.config.parameters),
+            Some(Body::FormURLEncoded) => {
+                if input.reader.is_some() {
+                    unimplemented!("sending FormURLEncoded with data (a reader) isn't supported");
+                }
+                req.form(&self.config.parameters)
+            },
             Some(Body::JSON) => {
                 if let Some(json) = &self.config.arguments {
                     if let Ok(string) = serde_json::to_string(&json) {
