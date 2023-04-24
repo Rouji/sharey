@@ -1,8 +1,53 @@
 use crate::custom::config::{Body, Config, RequestMethod};
+use crate::custom::syntax::process;
 use mime_guess;
 use reqwest;
 use std::collections::HashMap;
-use std::io::{Seek, SeekFrom}; //TODO: optionally use libmagic ("magic" crate)?
+use std::io::{Seek, SeekFrom};
+use thiserror;
+use base64;
+use rand;
+
+struct SyntaxFuncData<'a> {
+    config: &'a Config,
+    response: Option<String>,
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    #[error("Invalid ShareX syntax")]
+    Syntax(String),
+    #[error("Request error")]
+    Request(#[from] reqwest::Error),
+}
+
+fn syntax_func_callback(name: &String, args: &Vec<String>, data: &SyntaxFuncData) -> Result<String, Error> {
+    match name.as_str() {
+        "response" => {
+            match &data.response {
+                Some(res) => Ok(res.to_string()),
+                None => Err(Error::Syntax("{response} is not available in current context".to_string())),
+            }
+        }
+        "base64" => {
+            match args.get(0) {
+                Some(arg) => Ok(base64::encode(arg.as_bytes())),
+                None => Err(Error::Syntax("base64 needs exactly 1 argument".to_string())),
+            }
+        }
+        "random" => {
+            if args.len() < 1 {
+                Err(Error::Syntax("{random} needs at least 1 argument".to_string()))
+            }
+            else {
+                let rnd_i = rand::random::<usize>()%args.len();
+                Ok(args[rnd_i].to_string())
+            }
+        }
+        "a" => Ok("hello".to_string()),
+        _ => Ok("".to_string()),
+    }
+}
 
 pub struct CustomUploader {
     config: Config,
@@ -42,12 +87,21 @@ impl<'a> Input<'a> {
     }
 }
 
+#[derive(Debug)]
+pub struct Output {
+    pub response: Option<String>,
+    pub url: Option<String>,
+    pub deletion_url: Option<String>,
+    pub thumbnail_url: Option<String>,
+    pub error_message: Option<String>,
+}
+
 impl CustomUploader {
     pub fn new(config: Config) -> Self {
         Self { config }
     }
 
-    pub fn upload(&self, input: Input) -> Result<String, Box<dyn std::error::Error>> {
+    pub fn upload(&self, input: Input) -> Result<Output, Error> {
         let c = reqwest::blocking::Client::new();
 
         let mut req = match self.config.request_method {
@@ -58,20 +112,30 @@ impl CustomUploader {
             RequestMethod::DELETE => c.request(reqwest::Method::DELETE, &self.config.request_url),
         };
 
-        let mut header_map = reqwest::header::HeaderMap::new();
+
+        let mut syntax_func_data = SyntaxFuncData{config: &self.config, response: None};
+        let syn = |s| process(s, syntax_func_callback, &syntax_func_data);
+
         if let Some(h) = &self.config.headers {
+            let mut header_map = reqwest::header::HeaderMap::new();
             for (k, v) in h.iter() {
                 if let (Ok(name), Ok(val)) = (
                     reqwest::header::HeaderName::from_bytes(k.as_bytes()),
-                    reqwest::header::HeaderValue::from_str(v),
+                    reqwest::header::HeaderValue::from_str(&syn(v)?),
                 ) {
                     header_map.insert(name, val);
                 }
             }
+            req = req.headers(header_map);
         }
-        req = req.headers(header_map);
 
-        req = req.query(&self.config.parameters);
+        if let Some(param) = &self.config.parameters {
+            let mut param_map: HashMap<String,String> = HashMap::new();
+            for (k, v) in param.iter() {
+                param_map.insert(k.to_string(), syn(v)?);
+            }
+            req = req.query(&param_map);
+        }
 
         req = match self.config.body {
             //Some(Body::OnceToldMe)
@@ -79,7 +143,7 @@ impl CustomUploader {
                 let mut form = reqwest::blocking::multipart::Form::new();
                 if let Some(args) = &self.config.arguments {
                     for (k, v) in args {
-                        form = form.text(k.clone(), v.clone());
+                        form = form.text(k.clone(), syn(v)?);
                     }
                 }
 
@@ -138,7 +202,29 @@ impl CustomUploader {
         };
 
         let res = req.send()?.error_for_status();
+        let res_text = res?.text()?;
 
-        Ok(res?.text()?)
+        syntax_func_data.response = Some(res_text.to_string().clone());
+        let syn = |s| process(s, syntax_func_callback, &syntax_func_data);
+
+        Ok(Output{
+            response: Some(res_text.clone()),
+            url: Some(match &self.config.url {
+                Some(url) => syn(&url)?,
+                None => res_text,
+            }),
+            deletion_url: match &self.config.deletion_url{
+                Some(url) => Some(syn(&url)?),
+                None => None,
+            },
+            thumbnail_url: match &self.config.thumbnail_url{
+                Some(url) => Some(syn(&url)?),
+                None => None,
+            },
+            error_message: match &self.config.error_message{
+                Some(err) => Some(syn(&err)?),
+                None => None,
+            },
+        })
     }
 }
