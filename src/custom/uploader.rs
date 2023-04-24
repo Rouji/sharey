@@ -1,16 +1,17 @@
 use crate::custom::config::{Body, Config, RequestMethod};
 use crate::custom::syntax::process;
+use base64;
 use mime_guess;
+use rand;
 use reqwest;
 use std::collections::HashMap;
 use std::io::{Seek, SeekFrom};
 use thiserror;
-use base64;
-use rand;
 
 struct SyntaxFuncData<'a> {
     config: &'a Config,
-    response: Option<String>,
+    response_text: Option<String>,
+    response_headers: HashMap<String, String>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -21,31 +22,44 @@ pub enum Error {
     Request(#[from] reqwest::Error),
 }
 
-fn syntax_func_callback(name: &String, args: &Vec<String>, data: &SyntaxFuncData) -> Result<String, Error> {
+fn syntax_func_callback(
+    name: &String,
+    args: &Vec<String>,
+    data: &SyntaxFuncData,
+) -> Result<String, Error> {
     match name.as_str() {
-        "response" => {
-            match &data.response {
-                Some(res) => Ok(res.to_string()),
-                None => Err(Error::Syntax("{response} is not available in current context".to_string())),
-            }
-        }
-        "base64" => {
-            match args.get(0) {
-                Some(arg) => Ok(base64::encode(arg.as_bytes())),
-                None => Err(Error::Syntax("base64 needs exactly 1 argument".to_string())),
-            }
-        }
+        "response" => match &data.response_text {
+            Some(text) => Ok(text.to_string()),
+            None => Err(Error::Syntax(
+                "{response} is not available in current context".to_string(),
+            )),
+        },
+        "base64" => match args.get(0) {
+            Some(arg) => Ok(base64::encode(arg.as_bytes())),
+            None => Err(Error::Syntax("base64 needs exactly 1 argument".to_string())),
+        },
         "random" => {
             if args.len() < 1 {
-                Err(Error::Syntax("{random} needs at least 1 argument".to_string()))
-            }
-            else {
-                let rnd_i = rand::random::<usize>()%args.len();
+                Err(Error::Syntax(
+                    "{random} needs at least 1 argument".to_string(),
+                ))
+            } else {
+                let rnd_i = rand::random::<usize>() % args.len();
                 Ok(args[rnd_i].to_string())
             }
         }
-        "a" => Ok("hello".to_string()),
-        _ => Ok("".to_string()),
+        "header" => {
+            match args.get(0) {
+                Some(name) => Ok(match data.response_headers.get(name) {
+                    Some(val) => val.to_string(),
+                    None => "".to_string(),
+                }),
+                None => Err(Error::Syntax("{header} needs 1 argument".to_string())),
+            }
+        }
+        //TODO
+        "select" | "prompt" => Err(Error::Syntax(format!("unsupported function {{{}}}", name))),
+        _ => Err(Error::Syntax(format!("invalid function {{{}}}", name))),
     }
 }
 
@@ -112,8 +126,11 @@ impl CustomUploader {
             RequestMethod::DELETE => c.request(reqwest::Method::DELETE, &self.config.request_url),
         };
 
-
-        let mut syntax_func_data = SyntaxFuncData{config: &self.config, response: None};
+        let mut syntax_func_data = SyntaxFuncData {
+            config: &self.config,
+            response_text: None,
+            response_headers: HashMap::new(),
+        };
         let syn = |s| process(s, syntax_func_callback, &syntax_func_data);
 
         if let Some(h) = &self.config.headers {
@@ -130,7 +147,7 @@ impl CustomUploader {
         }
 
         if let Some(param) = &self.config.parameters {
-            let mut param_map: HashMap<String,String> = HashMap::new();
+            let mut param_map: HashMap<String, String> = HashMap::new();
             for (k, v) in param.iter() {
                 param_map.insert(k.to_string(), syn(v)?);
             }
@@ -174,7 +191,7 @@ impl CustomUploader {
                     unimplemented!("sending FormURLEncoded with data (a reader) isn't supported");
                 }
                 req.form(&self.config.parameters)
-            },
+            }
             Some(Body::JSON) => {
                 if let Some(json) = &self.config.arguments {
                     if let Ok(string) = serde_json::to_string(&json) {
@@ -201,27 +218,35 @@ impl CustomUploader {
             }
         };
 
-        let res = req.send()?.error_for_status();
-        let res_text = res?.text()?;
+        let res = req.send()?.error_for_status()?;
 
-        syntax_func_data.response = Some(res_text.to_string().clone());
+        for (k, v) in res.headers() {
+            if let Ok(val) = v.to_str() {
+                syntax_func_data.response_headers.insert(k.to_string(), val.to_string());
+            }
+        }
+
+        let res_text = res.text()?.clone();
+        syntax_func_data.response_text = Some(res_text.to_string().clone());
+
         let syn = |s| process(s, syntax_func_callback, &syntax_func_data);
 
-        Ok(Output{
+
+        Ok(Output {
             response: Some(res_text.clone()),
             url: Some(match &self.config.url {
                 Some(url) => syn(&url)?,
                 None => res_text,
             }),
-            deletion_url: match &self.config.deletion_url{
+            deletion_url: match &self.config.deletion_url {
                 Some(url) => Some(syn(&url)?),
                 None => None,
             },
-            thumbnail_url: match &self.config.thumbnail_url{
+            thumbnail_url: match &self.config.thumbnail_url {
                 Some(url) => Some(syn(&url)?),
                 None => None,
             },
-            error_message: match &self.config.error_message{
+            error_message: match &self.config.error_message {
                 Some(err) => Some(syn(&err)?),
                 None => None,
             },
