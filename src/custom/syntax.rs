@@ -6,8 +6,8 @@ const ESCAPE: char = '\\';
 
 #[derive(Debug)]
 pub struct Function {
-    name: String,
-    args: Vec<String>,
+    pub name: String,
+    pub args: Vec<String>,
 }
 
 #[derive(Debug)]
@@ -20,14 +20,14 @@ fn char_vec_to_string(vec: &Vec<char>) -> String {
     vec.iter().cloned().collect::<String>()
 }
 
-pub fn parse(string: &str) -> Vec<Element> {
-    println!("{}", string);
+fn parse(string: &str) -> Vec<Element> {
     let mut i: usize = 0;
     let input: Vec<char> = string.chars().collect();
     let mut elements: Vec<Element> = Vec::new();
     let mut function_name: Vec<char> = Vec::new();
     let mut function_args: Vec<Vec<char>> = Vec::new();
     let mut tmp: Vec<char> = Vec::new();
+    let mut in_function = false;
     while let Some(c) = input.get(i) {
         match *c {
             ESCAPE => {
@@ -41,11 +41,18 @@ pub fn parse(string: &str) -> Vec<Element> {
                     elements.push(Element::String(char_vec_to_string(&tmp)));
                     tmp = Vec::new();
                 }
+                in_function = true;
                 i += 1;
             }
             ARGUMENTS_START => {
-                function_name = tmp;
-                tmp = Vec::new();
+                // allow things like {base64:user:pw} without escaping
+                if function_name.len() > 0 || !in_function {
+                    tmp.push(*c);
+                }
+                else {
+                    function_name = tmp;
+                    tmp = Vec::new();
+                }
                 i += 1;
             }
             ARGUMENTS_DELIMITER => {
@@ -70,6 +77,7 @@ pub fn parse(string: &str) -> Vec<Element> {
                 }));
                 function_args = Vec::new();
                 function_name = Vec::new();
+                in_function = false;
                 i += 1;
             }
             _ => {
@@ -84,3 +92,18 @@ pub fn parse(string: &str) -> Vec<Element> {
     elements
 }
 
+pub fn process<F, D, E>(input: &str, func_callback: F, user_data: &D) -> Result<String, E>
+where
+    F: Fn(&String, &Vec<String>, &D) -> Result<String, E>,
+{
+    let mut output: String = String::new();
+    for el in parse(input) {
+        match el {
+            Element::String(string) => output.push_str(&string),
+            Element::Function(func_def) => {
+                output.push_str(&func_callback(&func_def.name, &func_def.args, user_data)?)
+            }
+        }
+    }
+    Ok(output)
+}
