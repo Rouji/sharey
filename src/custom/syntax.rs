@@ -1,109 +1,84 @@
-const FUNCTION_START: char = '{';
-const FUNCTION_END: char = '}';
-const ARGUMENTS_START: char = ':';
-const ARGUMENTS_DELIMITER: char = '|';
+const FUNC_START: char = '{';
+const FUNC_END: char = '}';
+const ARG_START: char = ':';
+const ARG_DELIM: char = '|';
 const ESCAPE: char = '\\';
-
-#[derive(Debug)]
-pub struct Function {
-    pub name: String,
-    pub args: Vec<String>,
-}
-
-#[derive(Debug)]
-pub enum Element {
-    String(String),
-    Function(Function),
-}
 
 fn char_vec_to_string(vec: &Vec<char>) -> String {
     vec.iter().cloned().collect::<String>()
 }
 
-fn parse(string: &str) -> Vec<Element> {
-    let mut i: usize = 0;
-    let input: Vec<char> = string.chars().collect();
-    let mut elements: Vec<Element> = Vec::new();
-    let mut function_name: Vec<char> = Vec::new();
-    let mut function_args: Vec<Vec<char>> = Vec::new();
-    let mut tmp: Vec<char> = Vec::new();
-    let mut in_function = false;
-    while let Some(c) = input.get(i) {
-        match *c {
-            ESCAPE => {
-                if let Some(next) = input.get(i + 1) {
-                    tmp.push(*next);
-                }
-                i += 2;
-            }
-            FUNCTION_START => {
-                if tmp.len() > 0 {
-                    elements.push(Element::String(char_vec_to_string(&tmp)));
-                    tmp = Vec::new();
-                }
-                in_function = true;
-                i += 1;
-            }
-            ARGUMENTS_START => {
-                // allow things like {base64:user:pw} without escaping
-                if function_name.len() > 0 || !in_function {
-                    tmp.push(*c);
-                }
-                else {
-                    function_name = tmp;
-                    tmp = Vec::new();
-                }
-                i += 1;
-            }
-            ARGUMENTS_DELIMITER => {
-                function_args.push(tmp);
-                tmp = Vec::new();
-                i += 1;
-            }
-            FUNCTION_END => {
-                if function_name.len() == 0 {
-                    function_name = tmp;
-                    tmp = Vec::new();
-                } else if tmp.len() > 0 {
-                    function_args.push(tmp);
-                    tmp = Vec::new();
-                }
-                elements.push(Element::Function(Function {
-                    name: char_vec_to_string(&function_name),
-                    args: function_args
-                        .iter()
-                        .map(|arg| char_vec_to_string(arg))
-                        .collect(),
-                }));
-                function_args = Vec::new();
-                function_name = Vec::new();
-                in_function = false;
-                i += 1;
-            }
-            _ => {
-                tmp.push(*c);
-                i += 1;
-            }
-        }
-    }
-    if tmp.len() > 0 {
-        elements.push(Element::String(char_vec_to_string(&tmp)));
-    }
-    elements
+fn string_to_char_vec(string: &String) -> Vec<char> {
+    string.chars().collect()
 }
 
-pub fn process<F, D, E>(input: &str, func_callback: F, user_data: &D) -> Result<String, E>
+fn process_int<F, D, E>(input: &Vec<char>, is_func: bool, start: usize, func_callback: &F, user_data: &D) -> Result<(Vec<char>, usize), E>
 where
-    F: Fn(&String, &Vec<String>, &D) -> Result<String, E>,
+    F: Fn(&String, &Vec<String>, &D) -> Result<String, E>
 {
-    let mut output: String = String::new();
-    for el in parse(input) {
-        match el {
-            Element::String(string) => output.push_str(&string),
-            Element::Function(func_def) => {
-                output.push_str(&func_callback(&func_def.name, &func_def.args, user_data)?)
+    let mut escape = false;
+    let mut out: Vec<char> = Vec::new();
+    let mut i = start;
+    'outer: loop{
+        if !(i < input.len()){
+            break 'outer;
+        }
+
+        let c = input[i];
+        if !escape {
+            match c {
+                FUNC_START => {
+                    let (processed, j) = process_int(input, true, i+1, func_callback, user_data)?;
+                    println!("{}-{}: {} -> {}", i+1, j, char_vec_to_string(&input[i+1..j].to_vec()), char_vec_to_string(&processed)); 
+                    out.extend(processed);
+                    i = j;
+                    continue;
+                }
+                FUNC_END | ARG_DELIM => {
+                    break 'outer;
+                }
+                ESCAPE => {
+                    escape = true;
+                    continue;
+                }
+                ARG_START => {
+                    if is_func {
+                        let mut params: Vec<String> = Vec::new();
+                        'inner: loop {
+                            let (processed, j) = process_int(input, false, i+1, func_callback, user_data)?;
+                            println!("{}-{}: {} -> {}", i+1, j, char_vec_to_string(&input[i+1..j].to_vec()), char_vec_to_string(&processed)); 
+                            i = j;
+                            params.push(char_vec_to_string(&processed));
+                            if !(i < input.len() && input[i] == ARG_DELIM){
+                                break 'inner;
+                            }
+                        }
+                        let call_ret = func_callback(&char_vec_to_string(&out), &params, user_data)?;
+                        return Ok((string_to_char_vec(&call_ret),i))
+                    }
+                }
+                _ => ()
             }
         }
+
+        escape = false;
+        out.push(c);
+        i += 1;
     }
-    Ok(output)
+
+    if is_func {
+        let call_ret = func_callback(&char_vec_to_string(&out), &Vec::new(), user_data)?;
+        return Ok((string_to_char_vec(&call_ret), i));
+    }
+    Ok((out, i))
+}
+
+pub fn process<F, D, E>(input: &str, func_callback: &F, user_data: &D) -> Result<String, E>
+where
+    F: Fn(&String, &Vec<String>, &D) -> Result<String, E>
+{
+    let input_chars = string_to_char_vec(&input.to_string());
+    let (output, j) = process_int(&input_chars, false, 0, func_callback, user_data)?;
+    println!("{}-{}: {} -> {}", 0, j, char_vec_to_string(&input_chars[0..j].to_vec()), char_vec_to_string(&output)); 
+    Ok(char_vec_to_string(&output))
 }
