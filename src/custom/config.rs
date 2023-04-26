@@ -27,8 +27,8 @@ pub enum DestinationType {
     ImageUploader,
     TextUploader,
     FileUploader,
+    #[serde(alias = "URLSharingService")]
     URLShortener,
-    URLSharingService,
 }
 
 #[derive(Deserialize, PartialEq, Eq)]
