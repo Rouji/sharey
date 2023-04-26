@@ -58,7 +58,12 @@ fn syntax_func_callback(
             }
         }
         //TODO
-        "select" | "prompt" => Err(Error::Syntax(format!("unsupported function {{{}}}", name))),
+        "select" | "prompt" | "json" | "xml" | "input" | "filename" | "regex" => Err(Error::Syntax(format!("unsupported function {{{}}}", name))),
+        "dbg" => {
+            dbg!(name);
+            dbg!(args);
+            Ok("dbg".to_string())
+        }
         _ => Err(Error::Syntax(format!("invalid function {{{}}}", name))),
     }
 }
@@ -131,7 +136,7 @@ impl CustomUploader {
             response_text: None,
             response_headers: HashMap::new(),
         };
-        let syn = |s| process(s, syntax_func_callback, &syntax_func_data);
+        let syn = |s| process(s, &syntax_func_callback, &syntax_func_data);
 
         if let Some(h) = &self.config.headers {
             let mut header_map = reqwest::header::HeaderMap::new();
@@ -229,7 +234,7 @@ impl CustomUploader {
         let res_text = res.text()?.clone();
         syntax_func_data.response_text = Some(res_text.to_string().clone());
 
-        let syn = |s| process(s, syntax_func_callback, &syntax_func_data);
+        let syn = |s| process(s, &syntax_func_callback, &syntax_func_data);
 
 
         Ok(Output {
