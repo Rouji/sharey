@@ -1,5 +1,5 @@
+use serde::de::IntoDeserializer;
 use serde::{Deserialize, Deserializer};
-use serde_json;
 use std::collections::HashMap;
 use thiserror;
 
@@ -48,8 +48,6 @@ pub enum Body {
     None,
 }
 
-//format comma-separated list (with possibly spaces in there) into a proper json list of strings
-//and parse that instead
 fn deserialize_destination_types<'de, D>(
     deserializer: D,
 ) -> Result<Option<Vec<DestinationType>>, D::Error>
@@ -57,15 +55,11 @@ where
     D: Deserializer<'de>,
 {
     let comma_separated: &str = Deserialize::deserialize(deserializer)?;
-    let json_list = format!(
-        "[{}]",
-        comma_separated
-            .split(",")
-            .map(|p| format!("\"{}\"", p.trim()))
-            .collect::<Vec<String>>()
-            .join(",")
-    );
-    Ok(Some(serde_json::from_str(&json_list).unwrap()))
+    let types = comma_separated
+        .split(',')
+        .map(|piece| DestinationType::deserialize(piece.trim().into_deserializer()))
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(Some(types))
 }
 
 #[allow(dead_code)]
