@@ -48,17 +48,17 @@ fn syntax_func_callback(
                 Ok(args[rnd_i].to_string())
             }
         }
-        "header" => {
-            match args.get(0) {
-                Some(name) => Ok(match data.response_headers.get(name) {
-                    Some(val) => val.to_string(),
-                    None => "".to_string(),
-                }),
-                None => Err(Error::Syntax("{header} needs 1 argument".to_string())),
-            }
+        "header" => match args.get(0) {
+            Some(name) => Ok(match data.response_headers.get(name) {
+                Some(val) => val.to_string(),
+                None => "".to_string(),
+            }),
+            None => Err(Error::Syntax("{header} needs 1 argument".to_string())),
         }
-        //TODO
-        "select" | "prompt" | "json" | "xml" | "input" | "filename" | "regex" => Err(Error::Syntax(format!("unsupported function {{{}}}", name))),
+          //TODO
+        "select" | "prompt" | "json" | "xml" | "input" | "filename" | "regex" => {
+            Err(Error::Syntax(format!("unsupported function {{{}}}", name)))
+        }
         "dbg" => {
             dbg!(name);
             dbg!(args);
@@ -72,10 +72,8 @@ pub struct CustomUploader {
     config: Config,
 }
 
-#[allow(dead_code)]
-#[derive(Default)]
 pub struct Input<'a> {
-    reader: Option<Box<dyn std::io::Read + std::marker::Send>>,
+    reader: Box<dyn std::io::Read + std::marker::Send>,
     content_size: Option<u64>,
     file_name: Option<&'a str>,
     mime_type: Option<&'a str>,
@@ -98,7 +96,7 @@ impl<'a> Input<'a> {
         let mime_type = mime_guess::from_path(file_path).first_raw();
         let reader = std::io::BufReader::new(f);
         Ok(Self {
-            reader: Some(Box::new(reader)),
+            reader: Box::new(reader),
             content_size,
             mime_type,
             file_name,
@@ -123,13 +121,16 @@ impl CustomUploader {
     pub fn upload(&self, input: Input) -> Result<Output, Error> {
         let c = reqwest::blocking::Client::new();
 
-        let mut req = match self.config.request_method {
-            RequestMethod::GET => c.request(reqwest::Method::GET, &self.config.request_url),
-            RequestMethod::POST => c.request(reqwest::Method::POST, &self.config.request_url),
-            RequestMethod::PUT => c.request(reqwest::Method::PUT, &self.config.request_url),
-            RequestMethod::PATCH => c.request(reqwest::Method::PATCH, &self.config.request_url),
-            RequestMethod::DELETE => c.request(reqwest::Method::DELETE, &self.config.request_url),
-        };
+        let mut req = c.request(
+            match self.config.request_method {
+                RequestMethod::GET => reqwest::Method::GET,
+                RequestMethod::POST => reqwest::Method::POST,
+                RequestMethod::PUT => reqwest::Method::PUT,
+                RequestMethod::PATCH => reqwest::Method::PATCH,
+                RequestMethod::DELETE => reqwest::Method::DELETE,
+            },
+            &self.config.request_url,
+        );
 
         let mut syntax_func_data = SyntaxFuncData {
             config: &self.config,
@@ -169,33 +170,26 @@ impl CustomUploader {
                     }
                 }
 
-                if let Some(reader) = input.reader {
-                    let file_part = match input.content_size {
-                        Some(size) => {
-                            reqwest::blocking::multipart::Part::reader_with_length(reader, size)
-                        }
-                        None => reqwest::blocking::multipart::Part::reader(reader),
+                let file_part = match input.content_size {
+                    Some(size) => {
+                        reqwest::blocking::multipart::Part::reader_with_length(input.reader, size)
                     }
-                    .mime_str(match input.mime_type {
-                        Some(mime) => mime,
-                        None => "application/octet-stream",
-                    })?
-                    .file_name(match input.file_name {
-                        Some(name) => name.to_string(),
-                        None => "file.bin".to_string(),
-                    });
-
-                    form = form.part(self.config.file_form_name.clone(), file_part);
-                } else {
-                    unimplemented!("sending multipart without data (a reader) isn't supported");
+                    None => reqwest::blocking::multipart::Part::reader(input.reader),
                 }
+                .mime_str(match input.mime_type {
+                    Some(mime) => mime,
+                    None => "application/octet-stream",
+                })?
+                .file_name(match input.file_name {
+                    Some(name) => name.to_string(),
+                    None => "file.bin".to_string(),
+                });
+
+                form = form.part(self.config.file_form_name.clone(), file_part);
                 req.multipart(form)
             }
             Some(Body::FormURLEncoded) => {
-                if input.reader.is_some() {
-                    unimplemented!("sending FormURLEncoded with data (a reader) isn't supported");
-                }
-                req.form(&self.config.parameters)
+                unimplemented!("TODO");
             }
             Some(Body::JSON) => {
                 if let Some(json) = &self.config.arguments {
@@ -227,7 +221,9 @@ impl CustomUploader {
 
         for (k, v) in res.headers() {
             if let Ok(val) = v.to_str() {
-                syntax_func_data.response_headers.insert(k.to_string(), val.to_string());
+                syntax_func_data
+                    .response_headers
+                    .insert(k.to_string(), val.to_string());
             }
         }
 
@@ -235,7 +231,6 @@ impl CustomUploader {
         syntax_func_data.response_text = Some(res_text.to_string().clone());
 
         let syn = |s| process(s, &syntax_func_callback, &syntax_func_data);
-
 
         Ok(Output {
             response: Some(res_text.clone()),
