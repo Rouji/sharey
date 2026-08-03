@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use thiserror;
 
 fn default_request_method() -> RequestMethod {
-    RequestMethod::POST
+    RequestMethod::Post
 }
 fn default_file_form_name() -> String {
     "file".to_string()
@@ -15,11 +15,16 @@ fn default_response_type() -> String {
 
 #[derive(Deserialize, PartialEq, Eq)]
 pub enum RequestMethod {
-    POST,
-    GET,
-    PUT,
-    PATCH,
-    DELETE,
+    #[serde(rename = "POST")]
+    Post,
+    #[serde(rename = "GET")]
+    Get,
+    #[serde(rename = "PUT")]
+    Put,
+    #[serde(rename = "PATCH")]
+    Patch,
+    #[serde(rename = "DELETE")]
+    Delete,
 }
 
 #[derive(Deserialize, PartialEq, Eq)]
@@ -34,8 +39,10 @@ pub enum DestinationType {
 #[derive(Deserialize, PartialEq, Eq)]
 pub enum Body {
     MultipartFormData,
-    JSON,
-    XML,
+    #[serde(rename = "JSON")]
+    Json,
+    #[serde(rename = "XML")]
+    Xml,
     Binary,
     FormURLEncoded,
     None,

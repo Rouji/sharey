@@ -1,6 +1,7 @@
 use crate::custom::config::{Body, Config, RequestMethod};
 use crate::custom::syntax::process;
-use base64;
+use base64::engine::general_purpose::STANDARD as base64_engine;
+use base64::Engine;
 use mime_guess;
 use rand;
 use reqwest;
@@ -23,23 +24,23 @@ pub enum Error {
 }
 
 fn syntax_func_callback(
-    name: &String,
-    args: &Vec<String>,
+    name: &str,
+    args: &[String],
     data: &SyntaxFuncData,
 ) -> Result<String, Error> {
-    match name.as_str() {
+    match name {
         "response" => match &data.response_text {
             Some(text) => Ok(text.to_string()),
             None => Err(Error::Syntax(
                 "{response} is not available in current context".to_string(),
             )),
         },
-        "base64" => match args.get(0) {
-            Some(arg) => Ok(base64::encode(arg.as_bytes())),
+        "base64" => match args.first() {
+            Some(arg) => Ok(base64_engine.encode(arg.as_bytes())),
             None => Err(Error::Syntax("base64 needs exactly 1 argument".to_string())),
         },
         "random" => {
-            if args.len() < 1 {
+            if args.is_empty() {
                 Err(Error::Syntax(
                     "{random} needs at least 1 argument".to_string(),
                 ))
@@ -48,7 +49,7 @@ fn syntax_func_callback(
                 Ok(args[rnd_i].to_string())
             }
         }
-        "header" => match args.get(0) {
+        "header" => match args.first() {
             Some(name) => Ok(match data.response_headers.get(name) {
                 Some(val) => val.to_string(),
                 None => "".to_string(),
@@ -123,11 +124,11 @@ impl CustomUploader {
 
         let mut req = c.request(
             match self.config.request_method {
-                RequestMethod::GET => reqwest::Method::GET,
-                RequestMethod::POST => reqwest::Method::POST,
-                RequestMethod::PUT => reqwest::Method::PUT,
-                RequestMethod::PATCH => reqwest::Method::PATCH,
-                RequestMethod::DELETE => reqwest::Method::DELETE,
+                RequestMethod::Get => reqwest::Method::GET,
+                RequestMethod::Post => reqwest::Method::POST,
+                RequestMethod::Put => reqwest::Method::PUT,
+                RequestMethod::Patch => reqwest::Method::PATCH,
+                RequestMethod::Delete => reqwest::Method::DELETE,
             },
             &self.config.request_url,
         );
@@ -191,7 +192,7 @@ impl CustomUploader {
             Some(Body::FormURLEncoded) => {
                 unimplemented!("TODO");
             }
-            Some(Body::JSON) => {
+            Some(Body::Json) => {
                 if let Some(json) = &self.config.arguments {
                     if let Ok(string) = serde_json::to_string(&json) {
                         req.header("Content-Type", "application/json").body(string)
@@ -212,7 +213,7 @@ impl CustomUploader {
                 }
                 req.query(&params)
             }
-            Some(Body::XML) | Some(Body::Binary) => {
+            Some(Body::Xml) | Some(Body::Binary) => {
                 unimplemented!();
             }
         };
@@ -235,19 +236,19 @@ impl CustomUploader {
         Ok(Output {
             response: Some(res_text.clone()),
             url: Some(match &self.config.url {
-                Some(url) => syn(&url)?,
+                Some(url) => syn(url)?,
                 None => res_text,
             }),
             deletion_url: match &self.config.deletion_url {
-                Some(url) => Some(syn(&url)?),
+                Some(url) => Some(syn(url)?),
                 None => None,
             },
             thumbnail_url: match &self.config.thumbnail_url {
-                Some(url) => Some(syn(&url)?),
+                Some(url) => Some(syn(url)?),
                 None => None,
             },
             error_message: match &self.config.error_message {
-                Some(err) => Some(syn(&err)?),
+                Some(err) => Some(syn(err)?),
                 None => None,
             },
         })

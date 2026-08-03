@@ -1,8 +1,11 @@
+// TODO: remove once fields/functions below are actually wired up
+#![allow(dead_code)]
+
 use std::env;
 
 mod custom;
 use custom::config::Config;
-use custom::uploader::{CustomUploader, Input, Output};
+use custom::uploader::{CustomUploader, Input};
 mod tests;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -10,7 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config_path = &args[1];
     let file_path = &args[2];
 
-    let syntext = "{a}hello {test:123}{rand\\\\om}{test2:more|ar\\}gs} world";
+    let _syntext = "{a}hello {test:123}{rand\\\\om}{test2:more|ar\\}gs} world";
 
     let config = Config::from_file(config_path)?;
 
@@ -18,6 +21,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let input = Input::from_file(file_path)?;
 
-    dbg!(uploader.upload(input));
+    let _ = dbg!(uploader.upload(input));
     Ok(())
 }
