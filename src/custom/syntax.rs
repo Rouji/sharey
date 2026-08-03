@@ -48,13 +48,6 @@ where
                     'inner: loop {
                         let (processed, j) =
                             process_int(input, false, i + 1, func_callback, user_data)?;
-                        println!(
-                            "{}-{}: {} -> {}",
-                            i + 1,
-                            j,
-                            char_vec_to_string(&input[i + 1..j]),
-                            char_vec_to_string(&processed)
-                        );
                         i = j;
                         params.push(char_vec_to_string(&processed));
                         if !(i < input.len() && input[i] == ARG_DELIM) {
