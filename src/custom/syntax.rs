@@ -19,11 +19,7 @@ where
     let mut escape = false;
     let mut out: Vec<char> = Vec::new();
     let mut i = start;
-    'outer: loop{
-        if !(i < input.len()){
-            break 'outer;
-        }
-
+    'outer: while i < input.len() {
         let c = input[i];
         if !escape {
             match c {
@@ -31,7 +27,7 @@ where
                     let (processed, j) = process_int(input, true, i+1, func_callback, user_data)?;
                     println!("{}-{}: {} -> {}", i+1, j, char_vec_to_string(&input[i+1..j].to_vec()), char_vec_to_string(&processed)); 
                     out.extend(processed);
-                    i = j;
+                    i = j + 1;
                     continue;
                 }
                 FUNC_END | ARG_DELIM => {
@@ -39,6 +35,7 @@ where
                 }
                 ESCAPE => {
                     escape = true;
+                    i += 1;
                     continue;
                 }
                 ARG_START => {
