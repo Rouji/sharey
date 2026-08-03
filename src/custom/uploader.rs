@@ -54,8 +54,8 @@ fn syntax_func_callback(
                 None => "".to_string(),
             }),
             None => Err(Error::Syntax("{header} needs 1 argument".to_string())),
-        }
-          //TODO
+        },
+        //TODO
         "select" | "prompt" | "json" | "xml" | "input" | "filename" | "regex" => {
             Err(Error::Syntax(format!("unsupported function {{{}}}", name)))
         }

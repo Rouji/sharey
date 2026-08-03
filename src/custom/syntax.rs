@@ -12,9 +12,15 @@ fn string_to_char_vec(string: &String) -> Vec<char> {
     string.chars().collect()
 }
 
-fn process_int<F, D, E>(input: &Vec<char>, is_func: bool, start: usize, func_callback: &F, user_data: &D) -> Result<(Vec<char>, usize), E>
+fn process_int<F, D, E>(
+    input: &Vec<char>,
+    is_func: bool,
+    start: usize,
+    func_callback: &F,
+    user_data: &D,
+) -> Result<(Vec<char>, usize), E>
 where
-    F: Fn(&String, &Vec<String>, &D) -> Result<String, E>
+    F: Fn(&String, &Vec<String>, &D) -> Result<String, E>,
 {
     let mut escape = false;
     let mut out: Vec<char> = Vec::new();
@@ -24,8 +30,14 @@ where
         if !escape {
             match c {
                 FUNC_START => {
-                    let (processed, j) = process_int(input, true, i+1, func_callback, user_data)?;
-                    println!("{}-{}: {} -> {}", i+1, j, char_vec_to_string(&input[i+1..j].to_vec()), char_vec_to_string(&processed)); 
+                    let (processed, j) = process_int(input, true, i + 1, func_callback, user_data)?;
+                    println!(
+                        "{}-{}: {} -> {}",
+                        i + 1,
+                        j,
+                        char_vec_to_string(&input[i + 1..j].to_vec()),
+                        char_vec_to_string(&processed)
+                    );
                     out.extend(processed);
                     i = j + 1;
                     continue;
@@ -42,19 +54,27 @@ where
                     if is_func {
                         let mut params: Vec<String> = Vec::new();
                         'inner: loop {
-                            let (processed, j) = process_int(input, false, i+1, func_callback, user_data)?;
-                            println!("{}-{}: {} -> {}", i+1, j, char_vec_to_string(&input[i+1..j].to_vec()), char_vec_to_string(&processed)); 
+                            let (processed, j) =
+                                process_int(input, false, i + 1, func_callback, user_data)?;
+                            println!(
+                                "{}-{}: {} -> {}",
+                                i + 1,
+                                j,
+                                char_vec_to_string(&input[i + 1..j].to_vec()),
+                                char_vec_to_string(&processed)
+                            );
                             i = j;
                             params.push(char_vec_to_string(&processed));
-                            if !(i < input.len() && input[i] == ARG_DELIM){
+                            if !(i < input.len() && input[i] == ARG_DELIM) {
                                 break 'inner;
                             }
                         }
-                        let call_ret = func_callback(&char_vec_to_string(&out), &params, user_data)?;
-                        return Ok((string_to_char_vec(&call_ret),i))
+                        let call_ret =
+                            func_callback(&char_vec_to_string(&out), &params, user_data)?;
+                        return Ok((string_to_char_vec(&call_ret), i));
                     }
                 }
-                _ => ()
+                _ => (),
             }
         }
 
@@ -72,10 +92,16 @@ where
 
 pub fn process<F, D, E>(input: &str, func_callback: &F, user_data: &D) -> Result<String, E>
 where
-    F: Fn(&String, &Vec<String>, &D) -> Result<String, E>
+    F: Fn(&String, &Vec<String>, &D) -> Result<String, E>,
 {
     let input_chars = string_to_char_vec(&input.to_string());
     let (output, j) = process_int(&input_chars, false, 0, func_callback, user_data)?;
-    println!("{}-{}: {} -> {}", 0, j, char_vec_to_string(&input_chars[0..j].to_vec()), char_vec_to_string(&output)); 
+    println!(
+        "{}-{}: {} -> {}",
+        0,
+        j,
+        char_vec_to_string(&input_chars[0..j].to_vec()),
+        char_vec_to_string(&output)
+    );
     Ok(char_vec_to_string(&output))
 }
