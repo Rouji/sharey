@@ -31,13 +31,6 @@ where
             match c {
                 FUNC_START => {
                     let (processed, j) = process_int(input, true, i + 1, func_callback, user_data)?;
-                    println!(
-                        "{}-{}: {} -> {}",
-                        i + 1,
-                        j,
-                        char_vec_to_string(&input[i + 1..j].to_vec()),
-                        char_vec_to_string(&processed)
-                    );
                     out.extend(processed);
                     i = j + 1;
                     continue;
@@ -96,12 +89,5 @@ where
 {
     let input_chars = string_to_char_vec(&input.to_string());
     let (output, j) = process_int(&input_chars, false, 0, func_callback, user_data)?;
-    println!(
-        "{}-{}: {} -> {}",
-        0,
-        j,
-        char_vec_to_string(&input_chars[0..j].to_vec()),
-        char_vec_to_string(&output)
-    );
     Ok(char_vec_to_string(&output))
 }
