@@ -2,6 +2,7 @@ use crate::custom::config::{Body, Config, RequestMethod};
 use crate::custom::syntax::process;
 use base64::engine::general_purpose::STANDARD as base64_engine;
 use base64::Engine;
+use core::option::Option;
 use mime_guess;
 use rand;
 use reqwest;
@@ -13,6 +14,8 @@ struct SyntaxFuncData<'a> {
     config: &'a Config,
     response_text: Option<String>,
     response_headers: HashMap<String, String>,
+    file_name: Option<String>,
+    input: Option<String>,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -31,13 +34,13 @@ fn syntax_func_callback(
     match name {
         "response" => match &data.response_text {
             Some(text) => Ok(text.to_string()),
-            None => Err(Error::Syntax(
+            _ => Err(Error::Syntax(
                 "{response} is not available in current context".to_string(),
             )),
         },
         "base64" => match args.first() {
             Some(arg) => Ok(base64_engine.encode(arg.as_bytes())),
-            None => Err(Error::Syntax("base64 needs exactly 1 argument".to_string())),
+            _ => Err(Error::Syntax("base64 needs exactly 1 argument".to_string())),
         },
         "random" => {
             if args.is_empty() {
@@ -52,12 +55,23 @@ fn syntax_func_callback(
         "header" => match args.first() {
             Some(name) => Ok(match data.response_headers.get(name) {
                 Some(val) => val.to_string(),
-                None => "".to_string(),
+                _ => "".to_string(),
             }),
-            None => Err(Error::Syntax("{header} needs 1 argument".to_string())),
+            _ => Err(Error::Syntax("{header} needs 1 argument".to_string())),
+        },
+        "filename" => {
+            if let Some(file_name) = &data.file_name {
+                Ok(file_name.to_string())
+            } else {
+                Err(Error::Syntax("file name unknown".to_string()))
+            }
+        }
+        "input" => match &data.input {
+            Some(input) => Ok(input.to_string()),
+            _ => Err(Error::Syntax("no text input".to_string())),
         },
         //TODO
-        "select" | "prompt" | "json" | "xml" | "input" | "filename" | "regex" => {
+        "select" | "prompt" | "json" | "xml" | "regex" => {
             Err(Error::Syntax(format!("unsupported function {{{}}}", name)))
         }
         "dbg" => {
@@ -78,6 +92,7 @@ pub struct Input<'a> {
     content_size: Option<u64>,
     file_name: Option<&'a str>,
     mime_type: Option<&'a str>,
+    text_input: Option<&'a str>,
 }
 
 impl<'a> Input<'a> {
@@ -85,7 +100,7 @@ impl<'a> Input<'a> {
         let mut f = std::fs::File::open(file_path)?;
         let file_name = match std::path::Path::new(file_path).file_name() {
             Some(name) => name.to_str(),
-            None => Some("file.bin"),
+            _ => Some("file.bin"),
         };
         let content_size = match f.seek(SeekFrom::End(0)) {
             Ok(size) => {
@@ -101,6 +116,7 @@ impl<'a> Input<'a> {
             content_size,
             mime_type,
             file_name,
+            text_input: None,
         })
     }
 }
@@ -137,6 +153,8 @@ impl CustomUploader {
             config: &self.config,
             response_text: None,
             response_headers: HashMap::new(),
+            file_name: input.file_name.map(|file_name| file_name.to_string()),
+            input: input.text_input.map(|input| input.to_string()),
         };
         let syn = |s| process(s, &syntax_func_callback, &syntax_func_data);
 
@@ -175,15 +193,15 @@ impl CustomUploader {
                     Some(size) => {
                         reqwest::blocking::multipart::Part::reader_with_length(input.reader, size)
                     }
-                    None => reqwest::blocking::multipart::Part::reader(input.reader),
+                    _ => reqwest::blocking::multipart::Part::reader(input.reader),
                 }
                 .mime_str(match input.mime_type {
                     Some(mime) => mime,
-                    None => "application/octet-stream",
+                    _ => "application/octet-stream",
                 })?
                 .file_name(match input.file_name {
                     Some(name) => name.to_string(),
-                    None => "file.bin".to_string(),
+                    _ => "file.bin".to_string(),
                 });
 
                 form = form.part(self.config.file_form_name.clone(), file_part);
@@ -237,19 +255,19 @@ impl CustomUploader {
             response: Some(res_text.clone()),
             url: Some(match &self.config.url {
                 Some(url) => syn(url)?,
-                None => res_text,
+                _ => res_text,
             }),
             deletion_url: match &self.config.deletion_url {
                 Some(url) => Some(syn(url)?),
-                None => None,
+                _ => None,
             },
             thumbnail_url: match &self.config.thumbnail_url {
                 Some(url) => Some(syn(url)?),
-                None => None,
+                _ => None,
             },
             error_message: match &self.config.error_message {
                 Some(err) => Some(syn(err)?),
-                None => None,
+                _ => None,
             },
         })
     }
