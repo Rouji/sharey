@@ -55,7 +55,9 @@ parser_test_failing!(nonexistent_func, "{doesntexist}");
 parser_test_failing!(missing_arg, "{onearg}");
 parser_test_failing!(too_many_args, "{onearg:one|two}");
 parser_test!(one_arg, "{onearg:one}", "");
+parser_test!(one_arg_old, "$onearg:one$", "");
 parser_test!(two_arg, "{twoarg:one|two}", "");
+parser_test!(two_arg_old, "$twoarg:one|two$", "");
 parser_test_failing!(too_few_args, "{twoarg:one}");
 
 parser_test!(simple_func_call, "{hello}", "Hello");
