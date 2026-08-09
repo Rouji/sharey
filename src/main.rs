@@ -6,7 +6,6 @@ use std::env;
 mod custom;
 use custom::config::Config;
 use custom::uploader::{CustomUploader, Input};
-mod tests;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
