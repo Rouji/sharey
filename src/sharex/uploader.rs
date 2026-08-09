@@ -1,5 +1,5 @@
-use crate::custom::config::{Body, Config, RequestMethod};
-use crate::custom::syntax::process;
+use crate::sharex::config::{Body, Config, RequestMethod};
+use crate::sharex::template::process;
 use base64::engine::general_purpose::STANDARD as base64_engine;
 use base64::Engine;
 use core::option::Option;
@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use std::io::{Seek, SeekFrom};
 use thiserror;
 
-struct SyntaxFuncData<'a> {
+struct SharexTemplateFuncData<'a> {
     config: &'a Config,
     response_text: Option<String>,
     response_headers: HashMap<String, String>,
@@ -21,30 +21,32 @@ struct SyntaxFuncData<'a> {
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     #[error("Invalid ShareX syntax")]
-    Syntax(String),
+    SharexTemplate(String),
     #[error("Request error")]
     Request(#[from] reqwest::Error),
 }
 
-fn syntax_func_callback(
+fn sharex_template_func_callback(
     name: &str,
     args: &[String],
-    data: &SyntaxFuncData,
+    data: &SharexTemplateFuncData,
 ) -> Result<String, Error> {
     match name {
         "response" => match &data.response_text {
             Some(text) => Ok(text.to_string()),
-            _ => Err(Error::Syntax(
+            _ => Err(Error::SharexTemplate(
                 "{response} is not available in current context".to_string(),
             )),
         },
         "base64" => match args.first() {
             Some(arg) => Ok(base64_engine.encode(arg.as_bytes())),
-            _ => Err(Error::Syntax("base64 needs exactly 1 argument".to_string())),
+            _ => Err(Error::SharexTemplate(
+                "base64 needs exactly 1 argument".to_string(),
+            )),
         },
         "random" => {
             if args.is_empty() {
-                Err(Error::Syntax(
+                Err(Error::SharexTemplate(
                     "{random} needs at least 1 argument".to_string(),
                 ))
             } else {
@@ -57,33 +59,39 @@ fn syntax_func_callback(
                 Some(val) => val.to_string(),
                 _ => "".to_string(),
             }),
-            _ => Err(Error::Syntax("{header} needs 1 argument".to_string())),
+            _ => Err(Error::SharexTemplate(
+                "{header} needs 1 argument".to_string(),
+            )),
         },
         "filename" => {
             if let Some(file_name) = &data.file_name {
                 Ok(file_name.to_string())
             } else {
-                Err(Error::Syntax("file name unknown".to_string()))
+                Err(Error::SharexTemplate("file name unknown".to_string()))
             }
         }
         "input" => match &data.input {
             Some(input) => Ok(input.to_string()),
-            _ => Err(Error::Syntax("no text input".to_string())),
+            _ => Err(Error::SharexTemplate("no text input".to_string())),
         },
         //TODO
-        "select" | "prompt" | "json" | "xml" | "regex" => {
-            Err(Error::Syntax(format!("unsupported function {{{}}}", name)))
-        }
+        "select" | "prompt" | "json" | "xml" | "regex" => Err(Error::SharexTemplate(format!(
+            "unsupported function {{{}}}",
+            name
+        ))),
         "dbg" => {
             dbg!(name);
             dbg!(args);
             Ok("dbg".to_string())
         }
-        _ => Err(Error::Syntax(format!("invalid function {{{}}}", name))),
+        _ => Err(Error::SharexTemplate(format!(
+            "invalid function {{{}}}",
+            name
+        ))),
     }
 }
 
-pub struct CustomUploader {
+pub struct SharexUploader {
     config: Config,
 }
 
@@ -130,7 +138,7 @@ pub struct Output {
     pub error_message: Option<String>,
 }
 
-impl CustomUploader {
+impl SharexUploader {
     pub fn new(config: Config) -> Self {
         Self { config }
     }
@@ -149,14 +157,14 @@ impl CustomUploader {
             &self.config.request_url,
         );
 
-        let mut syntax_func_data = SyntaxFuncData {
+        let mut syntax_func_data = SharexTemplateFuncData {
             config: &self.config,
             response_text: None,
             response_headers: HashMap::new(),
             file_name: input.file_name.map(|file_name| file_name.to_string()),
             input: input.text_input.map(|input| input.to_string()),
         };
-        let syn = |s| process(s, &syntax_func_callback, &syntax_func_data);
+        let syn = |s| process(s, &sharex_template_func_callback, &syntax_func_data);
 
         if let Some(h) = &self.config.headers {
             let mut header_map = reqwest::header::HeaderMap::new();
@@ -249,7 +257,7 @@ impl CustomUploader {
         let res_text = res.text()?.clone();
         syntax_func_data.response_text = Some(res_text.to_string().clone());
 
-        let syn = |s| process(s, &syntax_func_callback, &syntax_func_data);
+        let syn = |s| process(s, &sharex_template_func_callback, &syntax_func_data);
 
         Ok(Output {
             response: Some(res_text.clone()),

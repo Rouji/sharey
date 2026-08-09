@@ -1,3 +1,3 @@
 pub mod config;
-pub mod syntax;
+pub mod template;
 pub mod uploader;

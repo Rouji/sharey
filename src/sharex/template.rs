@@ -13,14 +13,6 @@ const ESCAPE: char = '\\';
 static PROBABLY_OLD_SYNTAX_RE: std::sync::LazyLock<Regex> =
     std::sync::LazyLock::new(|| Regex::new(r"((^|[^\\])\$.*){2}").unwrap());
 
-fn char_vec_to_string(vec: &[char]) -> String {
-    vec.iter().collect::<String>()
-}
-
-fn string_to_char_vec(string: &str) -> Vec<char> {
-    string.chars().collect()
-}
-
 fn process_int<F, D, E>(
     input: &mut Peekable<impl Iterator<Item = char>>,
     is_func: bool,
@@ -132,7 +124,7 @@ fn upgrade_old_syntax(input: &str) -> String {
 mod test {
     use core::result::Result::Ok;
 
-    use crate::custom::syntax::process;
+    use crate::sharex::template::process;
 
     struct SyntaxFuncData {}
     struct Error {}
@@ -213,7 +205,7 @@ mod test {
     parser_test!(two_func_calls, "{hello}{hello}", "HelloHello");
 
     parser_test!(nested_call, "{echo:{hello}}", "Hello");
-    use crate::custom::syntax::{is_probably_old_syntax, upgrade_old_syntax};
+    use crate::sharex::template::{is_probably_old_syntax, upgrade_old_syntax};
 
     #[test]
     fn old_syntax_re() {

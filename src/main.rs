@@ -3,9 +3,9 @@
 
 use std::env;
 
-mod custom;
-use custom::config::Config;
-use custom::uploader::{CustomUploader, Input};
+mod sharex;
+use sharex::config::Config;
+use sharex::uploader::{Input, SharexUploader};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
@@ -16,7 +16,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = Config::from_file(config_path)?;
 
-    let uploader = CustomUploader::new(config);
+    let uploader = SharexUploader::new(config);
 
     let input = Input::from_file(file_path)?;
 
