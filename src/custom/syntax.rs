@@ -1,5 +1,5 @@
 use core::{
-    iter::Iterator,
+    iter::{Iterator, Peekable},
     result::Result::{self},
 };
 use regex::Regex;
@@ -14,7 +14,7 @@ static PROBABLY_OLD_SYNTAX_RE: std::sync::LazyLock<Regex> =
     std::sync::LazyLock::new(|| Regex::new(r"((^|[^\\])\$.*){2}").unwrap());
 
 fn char_vec_to_string(vec: &[char]) -> String {
-    vec.iter().cloned().collect::<String>()
+    vec.iter().collect::<String>()
 }
 
 fn string_to_char_vec(string: &str) -> Vec<char> {
@@ -22,49 +22,45 @@ fn string_to_char_vec(string: &str) -> Vec<char> {
 }
 
 fn process_int<F, D, E>(
-    input: &[char],
+    input: &mut Peekable<impl Iterator<Item = char>>,
     is_func: bool,
-    start: usize,
     func_callback: &F,
     user_data: &D,
-) -> Result<(Vec<char>, usize), E>
+) -> Result<(String, Option<char>), E>
 where
     F: Fn(&str, &[String], &D) -> Result<String, E>,
 {
     let mut escape = false;
-    let mut out: Vec<char> = Vec::new();
-    let mut i = start;
-    'outer: while i < input.len() {
-        let c = input[i];
+    let mut out = String::with_capacity(20);
+    let mut last_c: Option<char> = None;
+    'outer: while let Some(c) = input.next() {
         if !escape {
             match c {
                 FUNC_START => {
-                    let (processed, j) = process_int(input, true, i + 1, func_callback, user_data)?;
-                    out.extend(processed);
-                    i = j + 1;
+                    let (processed, _) = process_int(input, true, func_callback, user_data)?;
+                    out += &processed;
                     continue;
                 }
                 FUNC_END | ARG_DELIM => {
+                    last_c = Some(c);
                     break 'outer;
                 }
                 ESCAPE => {
                     escape = true;
-                    i += 1;
                     continue;
                 }
                 ARG_START if is_func => {
                     let mut params: Vec<String> = Vec::new();
                     'inner: loop {
-                        let (processed, j) =
-                            process_int(input, false, i + 1, func_callback, user_data)?;
-                        i = j;
-                        params.push(char_vec_to_string(&processed));
-                        if !(i < input.len() && input[i] == ARG_DELIM) {
+                        let (processed, last_c) =
+                            process_int(input, false, func_callback, user_data)?;
+                        params.push(processed);
+                        if !(last_c == Some(ARG_DELIM)) {
                             break 'inner;
                         }
                     }
-                    let call_ret = func_callback(&char_vec_to_string(&out), &params, user_data)?;
-                    return Ok((string_to_char_vec(&call_ret), i));
+                    let call_ret = func_callback(&out, &params, user_data)?;
+                    return Ok((call_ret, Some(c)));
                 }
                 _ => (),
             }
@@ -72,34 +68,36 @@ where
 
         escape = false;
         out.push(c);
-        i += 1;
     }
 
     if is_func {
-        let call_ret = func_callback(&char_vec_to_string(&out), &Vec::new(), user_data)?;
-        return Ok((string_to_char_vec(&call_ret), i));
+        let call_ret = func_callback(&out, &Vec::new(), user_data)?;
+        return Ok((call_ret, last_c));
     }
-    Ok((out, i))
+    Ok((out, last_c))
 }
 
 pub fn process<F, D, E>(input: &str, func_callback: &F, user_data: &D) -> Result<String, E>
 where
     F: Fn(&str, &[String], &D) -> Result<String, E>,
 {
-    let input_chars = if is_probably_old_syntax(input) {
-        string_to_char_vec(&upgrade_old_syntax(input))
+    let owned;
+    let input_str = if is_probably_old_syntax(input) {
+        owned = upgrade_old_syntax(input);
+        &owned
     } else {
-        string_to_char_vec(input)
+        input
     };
-    let (output, _j) = process_int(&input_chars, false, 0, func_callback, user_data)?;
-    Ok(char_vec_to_string(&output))
+    let mut input_chars = input_str.chars().peekable();
+    let (output, _) = process_int(&mut input_chars, false, func_callback, user_data)?;
+    Ok(output)
 }
 
-pub fn is_probably_old_syntax(input: &str) -> bool {
+fn is_probably_old_syntax(input: &str) -> bool {
     PROBABLY_OLD_SYNTAX_RE.is_match(input)
 }
 
-pub fn upgrade_old_syntax(input: &str) -> String {
+fn upgrade_old_syntax(input: &str) -> String {
     let mut output: String = String::with_capacity(input.len());
     let mut in_func: bool = false;
     let mut chars = input.chars().peekable();
