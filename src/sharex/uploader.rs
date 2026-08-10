@@ -164,14 +164,14 @@ impl SharexUploader {
             file_name: input.file_name.map(|file_name| file_name.to_string()),
             input: input.text_input.map(|input| input.to_string()),
         };
-        let syn = |s| process(s, &sharex_template_func_callback, &syntax_func_data);
+        let templ = |s| process(s, &sharex_template_func_callback, &syntax_func_data);
 
         if let Some(h) = &self.config.headers {
             let mut header_map = reqwest::header::HeaderMap::new();
             for (k, v) in h.iter() {
                 if let (Ok(name), Ok(val)) = (
                     reqwest::header::HeaderName::from_bytes(k.as_bytes()),
-                    reqwest::header::HeaderValue::from_str(&syn(v)?),
+                    reqwest::header::HeaderValue::from_str(&templ(v)?),
                 ) {
                     header_map.insert(name, val);
                 }
@@ -182,7 +182,7 @@ impl SharexUploader {
         if let Some(param) = &self.config.parameters {
             let mut param_map: HashMap<String, String> = HashMap::new();
             for (k, v) in param.iter() {
-                param_map.insert(k.to_string(), syn(v)?);
+                param_map.insert(k.to_string(), templ(v)?);
             }
             req = req.query(&param_map);
         }
@@ -193,7 +193,9 @@ impl SharexUploader {
                 let mut form = reqwest::blocking::multipart::Form::new();
                 if let Some(args) = &self.config.arguments {
                     for (k, v) in args {
-                        form = form.text(k.clone(), syn(v)?);
+                        if let Some(val) = v {
+                            form = form.text(k.clone(), templ(val)?);
+                        }
                     }
                 }
 
@@ -235,7 +237,7 @@ impl SharexUploader {
                     params.extend(p);
                 }
                 if let Some(a) = &self.config.arguments {
-                    params.extend(a);
+                    params.extend(a.iter().filter_map(|(k, v)| v.as_ref().map(|v| (k, v))));
                 }
                 req.query(&params)
             }

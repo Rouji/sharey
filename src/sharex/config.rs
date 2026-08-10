@@ -70,7 +70,7 @@ pub struct Config {
     pub name: Option<String>,
     pub regex_list: Option<Vec<String>>,
     pub body: Option<Body>,
-    pub arguments: Option<HashMap<String, String>>, // goes into the body?
+    pub arguments: Option<HashMap<String, Option<String>>>, // goes into the body?
     pub headers: Option<HashMap<String, String>>,
     pub parameters: Option<HashMap<String, String>>, // query string
     pub data: Option<String>,
