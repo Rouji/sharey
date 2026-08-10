@@ -2,7 +2,7 @@ use crate::sharex::config::{Body, Config, RequestMethod};
 use crate::sharex::template::process;
 use base64::engine::general_purpose::STANDARD as base64_engine;
 use base64::Engine;
-use core::option::Option;
+use core::option::Option::{self, Some};
 use mime_guess;
 use rand;
 use reqwest;
@@ -75,10 +75,9 @@ fn sharex_template_func_callback(
             _ => Err(Error::SharexTemplate("no text input".to_string())),
         },
         //TODO
-        "select" | "prompt" | "json" | "xml" | "regex" => Err(Error::SharexTemplate(format!(
-            "unsupported function {{{}}}",
-            name
-        ))),
+        "select" | "prompt" | "json" | "xml" | "regex" | "responseurl" => Err(
+            Error::SharexTemplate(format!("unsupported function {{{}}}", name)),
+        ),
         "dbg" => {
             dbg!(name);
             dbg!(args);
@@ -179,6 +178,21 @@ impl SharexUploader {
             req = req.headers(header_map);
         }
 
+        let templated_arguments = match &self.config.arguments {
+            Some(args) => {
+                let mut res = HashMap::new();
+                for (k, v) in args {
+                    let templated = match v {
+                        Some(v) => templ(v)?,
+                        None => String::new(),
+                    };
+                    res.insert(k.clone(), templated);
+                }
+                Some(res)
+            }
+            None => None,
+        };
+
         if let Some(param) = &self.config.parameters {
             let mut param_map: HashMap<String, String> = HashMap::new();
             for (k, v) in param.iter() {
@@ -191,11 +205,9 @@ impl SharexUploader {
             //Some(Body::OnceToldMe)
             Some(Body::MultipartFormData) => {
                 let mut form = reqwest::blocking::multipart::Form::new();
-                if let Some(args) = &self.config.arguments {
+                if let Some(args) = &templated_arguments {
                     for (k, v) in args {
-                        if let Some(val) = v {
-                            form = form.text(k.clone(), templ(val)?);
-                        }
+                        form = form.text(k.clone(), v.clone());
                     }
                 }
 
@@ -221,7 +233,7 @@ impl SharexUploader {
                 unimplemented!("TODO");
             }
             Some(Body::Json) => {
-                if let Some(json) = &self.config.arguments {
+                if let Some(json) = &templated_arguments {
                     if let Ok(string) = serde_json::to_string(&json) {
                         req.header("Content-Type", "application/json").body(string)
                     } else {
@@ -236,8 +248,8 @@ impl SharexUploader {
                 if let Some(p) = &self.config.parameters {
                     params.extend(p);
                 }
-                if let Some(a) = &self.config.arguments {
-                    params.extend(a.iter().filter_map(|(k, v)| v.as_ref().map(|v| (k, v))));
+                if let Some(a) = &templated_arguments {
+                    params.extend(a);
                 }
                 req.query(&params)
             }
