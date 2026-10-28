@@ -28,6 +28,19 @@ macro_rules! free_func {
     };
 }
 
+macro_rules! cstr_to_str {
+    ($str:ident, $ret:expr) => {
+        if $str.is_null() {
+            return $ret;
+        } else {
+            match unsafe { CStr::from_ptr($str) }.to_str() {
+                Ok(s) => s,
+                _ => return $ret,
+            }
+        }
+    };
+}
+
 opaque_type!(ShareyConfig);
 opaque_type!(ShareySharexUploader);
 opaque_type!(ShareyInput);
@@ -38,13 +51,7 @@ free_func!(sharey_input_free, ShareyInput);
 
 #[no_mangle]
 pub unsafe extern "C" fn sharey_config_from_file(path: *const c_char) -> *mut ShareyConfig {
-    if path.is_null() {
-        return ptr::null_mut();
-    }
-    let path = match unsafe { CStr::from_ptr(path) }.to_str() {
-        Ok(p) => p,
-        _ => return ptr::null_mut(),
-    };
+    let path = cstr_to_str!(path, ptr::null_mut());
     match Config::from_file(path) {
         Ok(c) => Box::into_raw(Box::new(c)) as *mut ShareyConfig,
         _ => ptr::null_mut(),
@@ -53,13 +60,7 @@ pub unsafe extern "C" fn sharey_config_from_file(path: *const c_char) -> *mut Sh
 
 #[no_mangle]
 pub unsafe extern "C" fn sharey_input_from_file(path: *const c_char) -> *mut ShareyInput {
-    if path.is_null() {
-        return ptr::null_mut();
-    }
-    let path = match unsafe { CStr::from_ptr(path) }.to_str() {
-        Ok(p) => p,
-        _ => return ptr::null_mut(),
-    };
+    let path = cstr_to_str!(path, ptr::null_mut());
     match Input::from_file(path) {
         Ok(i) => Box::into_raw(Box::new(i)) as *mut ShareyInput,
         _ => ptr::null_mut(),
