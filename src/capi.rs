@@ -32,9 +32,9 @@ opaque_type!(ShareyConfig);
 opaque_type!(ShareySharexUploader);
 opaque_type!(ShareyInput);
 
-free_func!(sharey_input_free, ShareyInput);
 free_func!(sharey_uploader_free, ShareySharexUploader);
 free_func!(sharey_config_free, ShareyConfig);
+free_func!(sharey_input_free, ShareyInput);
 
 #[no_mangle]
 pub unsafe extern "C" fn sharey_config_from_file(path: *const c_char) -> *mut ShareyConfig {
@@ -72,17 +72,17 @@ pub unsafe extern "C" fn sharey_uploader_new() -> *mut ShareySharexUploader {
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn sharey_upload(config: *const ShareyConfig, path: *const c_char) -> bool {
+pub unsafe extern "C" fn sharey_upload(
+    uploader: *const ShareySharexUploader,
+    config: *const ShareyConfig,
+    input: *const ShareyInput,
+) -> bool {
+    let Some(uploader) = (unsafe { uploader.cast::<SharexUploader>().as_ref() }) else {
+        return false;
+    };
     let Some(config) = (unsafe { config.cast::<Config>().as_ref() }) else {
         return false;
     };
-    let path = match unsafe { CStr::from_ptr(path) }.to_str() {
-        Ok(p) => p,
-        _ => return false,
-    };
-    let input = match Input::from_file(path) {
-        Ok(i) => i,
-        _ => return false,
-    };
-    SharexUploader::new().upload(config, input).is_ok()
+    let input = unsafe { Box::from_raw(input as *mut Input) };
+    uploader.upload(config, *input).is_ok()
 }
