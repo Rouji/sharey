@@ -3,9 +3,8 @@
 
 use std::env;
 
-mod sharex;
-use sharex::config::Config;
-use sharex::uploader::{Input, SharexUploader};
+use sharey::sharex::config::Config;
+use sharey::sharex::uploader::{Input, SharexUploader};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
@@ -16,10 +15,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let config = Config::from_file(config_path)?;
 
-    let uploader = SharexUploader::new(config);
+    let uploader = SharexUploader::new();
 
     let input = Input::from_file(file_path)?;
 
-    let _ = dbg!(uploader.upload(input));
+    let _ = dbg!(uploader.upload(&config, input));
     Ok(())
 }

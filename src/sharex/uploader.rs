@@ -11,6 +11,7 @@ use std::io::{Seek, SeekFrom};
 use thiserror;
 
 struct SharexTemplateFuncData<'a> {
+    #[allow(dead_code)]
     config: &'a Config,
     response_text: Option<String>,
     response_headers: HashMap<String, String>,
@@ -91,7 +92,7 @@ fn sharex_template_func_callback(
 }
 
 pub struct SharexUploader {
-    config: Config,
+    client: reqwest::blocking::Client,
 }
 
 pub struct Input<'a> {
@@ -137,27 +138,33 @@ pub struct Output {
     pub error_message: Option<String>,
 }
 
+impl Default for SharexUploader {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SharexUploader {
-    pub fn new(config: Config) -> Self {
-        Self { config }
+    pub fn new() -> Self {
+        Self {
+            client: reqwest::blocking::Client::new(),
+        }
     }
 
-    pub fn upload(&self, input: Input) -> Result<Output, Error> {
-        let c = reqwest::blocking::Client::new();
-
-        let mut req = c.request(
-            match self.config.request_method {
+    pub fn upload(&self, config: &Config, input: Input) -> Result<Output, Error> {
+        let mut req = self.client.request(
+            match config.request_method {
                 RequestMethod::Get => reqwest::Method::GET,
                 RequestMethod::Post => reqwest::Method::POST,
                 RequestMethod::Put => reqwest::Method::PUT,
                 RequestMethod::Patch => reqwest::Method::PATCH,
                 RequestMethod::Delete => reqwest::Method::DELETE,
             },
-            &self.config.request_url,
+            &config.request_url,
         );
 
         let mut syntax_func_data = SharexTemplateFuncData {
-            config: &self.config,
+            config,
             response_text: None,
             response_headers: HashMap::new(),
             file_name: input.file_name.map(|file_name| file_name.to_string()),
@@ -165,7 +172,7 @@ impl SharexUploader {
         };
         let templ = |s| process(s, &sharex_template_func_callback, &syntax_func_data);
 
-        if let Some(h) = &self.config.headers {
+        if let Some(h) = &config.headers {
             let mut header_map = reqwest::header::HeaderMap::new();
             for (k, v) in h.iter() {
                 if let (Ok(name), Ok(val)) = (
@@ -178,7 +185,7 @@ impl SharexUploader {
             req = req.headers(header_map);
         }
 
-        let templated_arguments = match &self.config.arguments {
+        let templated_arguments = match &config.arguments {
             Some(args) => {
                 let mut res = HashMap::new();
                 for (k, v) in args {
@@ -193,7 +200,7 @@ impl SharexUploader {
             None => None,
         };
 
-        if let Some(param) = &self.config.parameters {
+        if let Some(param) = &config.parameters {
             let mut param_map: HashMap<String, String> = HashMap::new();
             for (k, v) in param.iter() {
                 param_map.insert(k.to_string(), templ(v)?);
@@ -201,7 +208,7 @@ impl SharexUploader {
             req = req.query(&param_map);
         }
 
-        req = match self.config.body {
+        req = match config.body {
             //Some(Body::OnceToldMe)
             Some(Body::MultipartFormData) => {
                 let mut form = reqwest::blocking::multipart::Form::new();
@@ -226,7 +233,7 @@ impl SharexUploader {
                     _ => "file.bin".to_string(),
                 });
 
-                form = form.part(self.config.file_form_name.clone(), file_part);
+                form = form.part(config.file_form_name.clone(), file_part);
                 req.multipart(form)
             }
             Some(Body::FormURLEncoded) => {
@@ -245,7 +252,7 @@ impl SharexUploader {
             }
             Some(Body::None) | None => {
                 let mut params = HashMap::new();
-                if let Some(p) = &self.config.parameters {
+                if let Some(p) = &config.parameters {
                     params.extend(p);
                 }
                 if let Some(a) = &templated_arguments {
@@ -275,19 +282,19 @@ impl SharexUploader {
 
         Ok(Output {
             response: Some(res_text.clone()),
-            url: Some(match &self.config.url {
+            url: Some(match &config.url {
                 Some(url) => syn(url)?,
                 _ => res_text,
             }),
-            deletion_url: match &self.config.deletion_url {
+            deletion_url: match &config.deletion_url {
                 Some(url) => Some(syn(url)?),
                 _ => None,
             },
-            thumbnail_url: match &self.config.thumbnail_url {
+            thumbnail_url: match &config.thumbnail_url {
                 Some(url) => Some(syn(url)?),
                 _ => None,
             },
-            error_message: match &self.config.error_message {
+            error_message: match &config.error_message {
                 Some(err) => Some(syn(err)?),
                 _ => None,
             },

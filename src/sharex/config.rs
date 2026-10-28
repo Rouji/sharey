@@ -13,7 +13,7 @@ fn default_response_type() -> String {
     "Text".to_string()
 }
 
-#[derive(Deserialize, PartialEq, Eq)]
+#[derive(Clone, Deserialize, PartialEq, Eq)]
 pub enum RequestMethod {
     #[serde(rename = "POST")]
     Post,
@@ -27,7 +27,7 @@ pub enum RequestMethod {
     Delete,
 }
 
-#[derive(Deserialize, PartialEq, Eq)]
+#[derive(Clone, Deserialize, PartialEq, Eq)]
 pub enum DestinationType {
     ImageUploader,
     TextUploader,
@@ -36,7 +36,7 @@ pub enum DestinationType {
     URLShortener,
 }
 
-#[derive(Deserialize, PartialEq, Eq)]
+#[derive(Clone, Deserialize, PartialEq, Eq)]
 pub enum Body {
     MultipartFormData,
     #[serde(rename = "JSON")]
@@ -63,7 +63,7 @@ where
 }
 
 #[allow(dead_code)]
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "PascalCase")]
 pub struct Config {
     pub version: Option<String>,
